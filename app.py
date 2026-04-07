@@ -7,28 +7,44 @@ st.set_page_config(page_title="Hybrid Trader 2026", layout="wide")
 
 st.title("📈 Hybrid Intelligence Dashboard")
 
-# The "Simple" Ticker Input
-symbol = st.sidebar.text_input("Ticker (e.g. BTC-USD)", "GBPUSD=X")
+# 1. Input for the Asset
+symbol = st.sidebar.text_input("Ticker (e.g. BTC-USD or GBPUSD=X)", "GBPUSD=X")
 
-# Fetch Data
+# 2. Fetch Data
 df = yf.download(symbol, period="1mo", interval="1h")
 
 if not df.empty:
-    # Manual EMA Calculation (No Numba/TA required!)
+    # 3. Handle 2026 Multi-Index headers
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+
+    # 4. Manual EMA Calculation
     df['EMA_200'] = df['Close'].ewm(span=200, adjust=False).mean()
     
-    # Logic
-    last_price = df['Close'].iloc[-1]
-    last_ema = df['EMA_200'].iloc[-1]
+    # --- THE FIX IS HERE ---
+    # We use .iloc[-1] and then .item() to ensure we have a single decimal number
+    last_price = float(df['Close'].iloc[-1])
+    last_ema = float(df['EMA_200'].iloc[-1])
     
     c1, c2 = st.columns(2)
     c1.metric("Live Price", f"{last_price:.4f}")
-    c2.metric("Trend Status", "BULLISH" if last_price > last_ema else "BEARISH")
+    
+    status = "BULLISH" if last_price > last_ema else "BEARISH"
+    color = "normal" if status == "BULLISH" else "inverse"
+    c2.metric("Trend Status", status, delta_color=color)
 
-    # Charting
-    fig = go.Figure(data=[go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'])])
-    fig.add_trace(go.Scatter(x=df.index, y=df['EMA_200'], line=dict(color='yellow'), name="Trend Line"))
+    # 5. The Chart
+    fig = go.Figure(data=[go.Candlestick(
+        x=df.index, 
+        open=df['Open'], 
+        high=df['High'], 
+        low=df['Low'], 
+        close=df['Close'],
+        name="Price"
+    )])
+    
+    fig.add_trace(go.Scatter(x=df.index, y=df['EMA_200'], line=dict(color='yellow'), name="200 EMA"))
     fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False)
     st.plotly_chart(fig, use_container_width=True)
 else:
-    st.error("Check your Ticker symbol!")
+    st.error("Waiting for valid Ticker... Try 'BTC-USD'")
